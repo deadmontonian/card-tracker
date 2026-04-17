@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>카드 실적 달성 관리</title>
+
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
+        background: #f4f6fb;
+        padding: 20px;
+        max-width: 650px;
+        margin: auto;
+      }
+
+      .card {
+        background: white;
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 14px;
+        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
+      }
+
+      .title {
+        font-weight: 700;
+        font-size: 16px;
+        color: #333;
+      }
+
+      .progress-wrap {
+        background: #eee;
+        height: 12px;
+        border-radius: 8px;
+        overflow: hidden;
+        margin: 10px 0;
+      }
+
+      /* ✅ 진행바: 파란색 */
+      .progress {
+        height: 100%;
+        background: #4a7cff;
+        transition: width 0.3s ease;
+      }
+
+      .row {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      input {
+        flex: 1;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        font-size: 16px;
+      }
+
+      /* ✅ 실적추가 버튼: 빨간색 */
+      button {
+        background: #ff5c5c;
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      /* ✅ 이 카드 초기화 버튼: 파란색 */
+      .resetBtn {
+        background: #4a7cff;
+        margin-top: 10px;
+        width: 100%;
+      }
+
+      .small {
+        font-size: 13px;
+        margin-top: 4px;
+        color: #666;
+      }
+
+      .point-val {
+        color: #4a7cff;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h2>💳 카드 실적 관리</h2>
+    <div id="cardList"></div>
+
+    <script>
+      // 📌 여기에 네 새 웹앱 주소 넣음
+      const SHEET_URL =
+        "https://script.google.com/macros/s/AKfycbwotptcjLZ2U36GVpXRQY9onJqH3qu2ki6Yc_s1CnokV3oCPSGxUxlXyXbd4i2iBQFR/exec";
+
+      const cards = [
+        { name: "네이버 현대", target: 300000, point: true },
+        { name: "우리 카드의 정석 ", target: 300000, point: true },
+        { name: "K 체크", target: 300000, point: false }
+      ];
+
+      function loadData() {
+        const saved = localStorage.getItem("cardData_v4");
+        return saved ? JSON.parse(saved) : {};
+      }
+
+      function saveData(data) {
+        localStorage.setItem("cardData_v4", JSON.stringify(data));
+      }
+
+      function sendToSheet(card, amount, point) {
+        fetch(SHEET_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            card: card,
+            amount: amount,
+            point: point || 0
+          })
+        })
+          .then((res) => res.text())
+          .then((text) => console.log("응답:", text))
+          .catch((err) => console.error("전송에러:", err));
+      }
+
+      function render() {
+        const data = loadData();
+        const wrap = document.getElementById("cardList");
+        wrap.innerHTML = "";
+
+        cards.forEach((c, i) => {
+          if (!data[i]) data[i] = { spend: 0, point: 0 };
+
+          const spend = data[i].spend;
+          const point = data[i].point;
+          const percent = Math.min((spend / c.target) * 100, 100).toFixed(0);
+          const lack = Math.max(c.target - spend, 0);
+
+          const cardDiv = document.createElement("div");
+          cardDiv.className = "card";
+          cardDiv.innerHTML = `
+      <div class="title">${c.name}</div>
+      <div class="progress-wrap">
+        <div class="progress" style="width:${percent}%"></div>
+      </div>
+      <div class="small">현재: <b>${spend.toLocaleString()}</b> / 목표: ${c.target.toLocaleString()}원 (${percent}%)</div>
+      <div class="small">${lack > 0 ? `부족: <span style="color:#ff5c5c">${lack.toLocaleString()}원</span>` : '<span style="color:#4a7cff">✅ 실적 달성!</span>'}</div>
+
+      <div class="row">
+        <input type="number" id="sp${i}" placeholder="사용금액">
+        <button onclick="addSpend(${i})">실적추가</button>
+      </div>
+
+      ${
+        c.point
+          ? `
+        <div class="row">
+          <input type="number" id="pt${i}" placeholder="포인트">
+          <button onclick="addPoint(${i})" style="background:#555">포인트추가</button>
+        </div>
+        <div class="small">누적 포인트: <span class="point-val">${point.toLocaleString()} P</span></div>
+      `
+          : ""
+      }
+
+      <button class="resetBtn" onclick="resetCard(${i})">이 카드 초기화</button>
+    `;
+          wrap.appendChild(cardDiv);
+        });
+      }
+
+      function addSpend(i) {
+        const input = document.getElementById("sp" + i);
+        const val = Number(input.value || 0);
+        if (val <= 0) return;
+
+        const data = loadData();
+        if (!data[i]) data[i] = { spend: 0, point: 0 };
+
+        data[i].spend += val;
+        saveData(data);
+        sendToSheet(cards[i].name, val, 0);
+        render();
+      }
+
+      function addPoint(i) {
+        const input = document.getElementById("pt" + i);
+        const val = Number(input.value || 0);
+        if (val <= 0) return;
+
+        const data = loadData();
+        if (!data[i]) data[i] = { spend: 0, point: 0 };
+
+        data[i].point += val;
+        saveData(data);
+        sendToSheet(cards[i].name, 0, val);
+        render();
+      }
+
+      function resetCard(i) {
+        if (!confirm(`${cards[i].name} 초기화할까요?`)) return;
+        const data = loadData();
+        data[i] = { spend: 0, point: 0 };
+        saveData(data);
+        render();
+      }
+
+      render();
+    </script>
+  </body>
+</html>
